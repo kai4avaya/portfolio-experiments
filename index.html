@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/fruit.ico" type="image/x-icon">
+
+    <title>Kai Kleinbard - Floral Architecture</title>
+    <style>
+        :root {
+            --bg-color: #f4f7f9; /* Very light cloud color */
+            --font-stack: 'Courier New', Courier, monospace;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            overflow: hidden;
+            font-family: var(--font-stack);
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            cursor: default; 
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="asciiCanvas"></canvas>
+    </div>
+
+    <script>
+        /**
+         * Helper: Generate a random vibrant color excluding Blue
+         * Hues to avoid: approx 180 (Cyan) to 260 (Purple-Blue)
+         */
+        function getRandomHeaderColor() {
+            let hue = Math.random() * 360;
+            // If hue lands in the blue range, shift it
+            if (hue > 170 && hue < 270) {
+                hue = (hue + 100) % 360; 
+            }
+            return `hsl(${Math.floor(hue)}, 90%, 40%)`; // High saturation, medium darkness
+        }
+
+        /**
+         * Configuration
+         */
+        const config = {
+            textMain: "KAI\nKLEINBARD", 
+            textSub: "EXPERIMENTS", 
+            
+            fontSize: 12, 
+            fontFamily: "'Courier New', Courier, monospace",
+            colors: {
+                bg: '#f4f7f9',
+                
+                // DYNAMIC COLOR ON LOAD
+                header: getRandomHeaderColor(), 
+                
+                // FALLING PARTICLES (Light Sky Blue)
+                structure: '#87CEEB', 
+                backgroundFlower: 'rgba(135, 206, 235, 0.5)',
+                
+                cardBorder: '#8899aa',
+                cardText: '#445566',
+                arrowColor: '#334455' // Darker for visibility
+            },
+            squareSize: 60,
+            
+            // PHYSICS
+            gravity: 0.4,
+            friction: 0.9,    
+            slideForce: 1.5,   
+            scatter: 1.0,      
+            
+            // CHARACTERS
+            flowerGlyphs: "✿❀❁✾❋",
+            headerChars: "██▓▓▒▒░░ABCDEFGHIJKLMNOPQRSTUVWXYZ", 
+            
+            experiments: [
+                "NEURAL\nGARDENS",
+                "ASCII\nPHYSICS",
+                "DIGITAL\nBOTANY",
+                "REACTIVE\nTYPE",
+                "MEMORY\nGLITCH",
+                "PIXEL\nDUST"
+            ]
+        };
+
+        // --- SCENE 2 ELEMENTS (Sun, Birds, Clouds) ---
+
+        class Sun {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.baseRadius = 80; 
+                this.scale = 0;
+                this.active = false;
+                
+                // Jello Physics Mesh
+                this.numPoints = 24;
+                this.points = [];
+                for(let i=0; i<this.numPoints; i++){
+                    this.points.push({
+                        angle: (Math.PI * 2 / this.numPoints) * i,
+                        r: this.baseRadius,
+                        v: 0 // Velocity of radius change
+                    });
+                }
+            }
+
+            update(cameraY, pageHeight, mouseX, mouseY) {
+                // Trigger pop-in when camera moves down to scene 2
+                if (cameraY > pageHeight * 0.7) {
+                    this.active = true;
+                } else if (cameraY < pageHeight * 0.2) {
+                    this.active = false;
+                    this.scale = 0;
+                }
+
+                if (this.active && this.scale < 1) {
+                    // Elastic pop-in effect
+                    this.scale += (1 - this.scale) * 0.1;
+                }
+
+                // --- JELLO PHYSICS ---
+                const sunScreenY = this.y - cameraY;
+                const mx = mouseX - this.x;
+                const my = mouseY - sunScreenY;
+
+                for (let i = 0; i < this.numPoints; i++) {
+                    const p = this.points[i];
+                    
+                    // Current vertex position
+                    const r = p.r * this.scale;
+                    const vx = Math.cos(p.angle) * r;
+                    const vy = Math.sin(p.angle) * r;
+                    
+                    // Distance to mouse
+                    const dx = mx - vx;
+                    const dy = my - vy;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    // Mouse Interaction (Dent the surface)
+                    if (dist < 60) {
+                        // Push vertex inward (negative velocity to radius) to create dent
+                        // Or add turbulence
+                        p.v -= 2.0; 
+                    }
+                    
+                    // Spring force towards base radius
+                    const k = 0.05; // Spring stiffness
+                    const damping = 0.9;
+                    const delta = this.baseRadius - p.r;
+                    p.v += delta * k;
+
+                    // Surface tension (Neighbor springs)
+                    const prev = this.points[(i - 1 + this.numPoints) % this.numPoints];
+                    const next = this.points[(i + 1) % this.numPoints];
+                    // Pull towards average of neighbors
+                    p.v += (prev.r + next.r - 2 * p.r) * 0.1;
+
+                    // Integrate
+                    p.v *= damping;
+                    p.r += p.v;
+                }
+            }
+
+            draw(ctx, cameraY) {
+                if (this.scale < 0.01) return;
+                
+                const drawY = this.y - cameraY;
+
+                ctx.save();
+                ctx.translate(this.x, drawY);
+                ctx.fillStyle = '#FFD700'; // Gold
+
+                ctx.beginPath();
+                
+                // Draw smooth curve through points
+                // We use midpoints to approximate a smooth circle from the vertices
+                let p0 = this.points[this.numPoints-1];
+                let p1 = this.points[0];
+                let r0 = p0.r * this.scale;
+                let r1 = p1.r * this.scale;
+                let x0 = Math.cos(p0.angle) * r0;
+                let y0 = Math.sin(p0.angle) * r0;
+                let x1 = Math.cos(p1.angle) * r1;
+                let y1 = Math.sin(p1.angle) * r1;
+                
+                let midX = (x0 + x1) / 2;
+                let midY = (y0 + y1) / 2;
+                
+                ctx.moveTo(midX, midY);
+                
+                for(let i=0; i<this.numPoints; i++){
+                    const p = this.points[i];
+                    const nextP = this.points[(i+1)%this.numPoints];
+                    
+                    const r = p.r * this.scale;
+                    const nextR = nextP.r * this.scale;
+                    
+                    const x = Math.cos(p.angle) * r;
+                    const y = Math.sin(p.angle) * r;
+                    
+                    const nextX = Math.cos(nextP.angle) * nextR;
+                    const nextY = Math.sin(nextP.angle) * nextR;
+                    
+                    const nextMidX = (x + nextX) / 2;
+                    const nextMidY = (y + nextY) / 2;
+                    
+                    // Quadratic curve to the next midpoint using the vertex as control point
+                    ctx.quadraticCurveTo(x, y, nextMidX, nextMidY);
+                }
+
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Bird {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = 1 + Math.random() * 2; // Random speed
+                this.vy = 0;
+                this.char = "v";
+                this.flapTimer = 0;
+            }
+
+            update(canvasWidth, mouseX, mouseY, cameraY) {
+                // 1. Natural Flight
+                this.x += this.vx;
+                // Random vertical drift
+                this.y += Math.sin(Date.now() * 0.005 + this.x * 0.01) * 0.5;
+
+                // 2. Mouse Avoidance
+                // Calculate bird position on screen to compare with mouse
+                const screenY = this.y - cameraY;
+                const dx = this.x - mouseX;
+                const dy = screenY - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // If mouse is close (within 150px), fly away
+                if (dist < 150) {
+                    const force = (150 - dist) / 150; // 0 to 1
+                    const angle = Math.atan2(dy, dx);
+                    
+                    // Push away
+                    this.x += Math.cos(angle) * force * 5;
+                    this.y += Math.sin(angle) * force * 5;
+                    
+                    // Speed up slightly when scared
+                    this.vx += 0.1;
+                }
+
+                // Wrap around
+                if (this.x > canvasWidth + 50) {
+                    this.x = -50;
+                    this.y = (this.y + Math.random() * 100) % 1000 + 500; // Randomize Y on re-entry
+                    this.vx = 1 + Math.random() * 2; // Reset speed
+                }
+
+                // Flap animation
+                this.flapTimer++;
+                if (this.flapTimer > 10) {
+                    this.char = this.char === "v" ? "^" : "v";
+                    this.flapTimer = 0;
+                }
+            }
+
+            draw(ctx, cameraY) {
+                const drawY = this.y - cameraY;
+                // Don't draw if far off screen
+                if (drawY > ctx.canvas.height + 50 || drawY < -50) return;
+
+                ctx.fillStyle = '#333';
+                ctx.font = "bold 16px Courier New";
+                ctx.fillText(this.char, this.x, drawY);
+            }
+        }
+
+        class Cloud {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.speed = 0.2 + Math.random() * 0.3; // Slow drift
+                
+                // Amorphous shape: collection of random flower glyphs at offsets
+                this.particles = [];
+                const blobSize = 10 + Math.floor(Math.random() * 10); // 10-20 chars per cloud
+                
+                for(let i=0; i<blobSize; i++) {
+                    const bDx = (Math.random() - 0.5) * 80; // Horizontal spread
+                    const bDy = (Math.random() - 0.5) * 40; // Vertical spread
+                    this.particles.push({
+                        baseDx: bDx,
+                        baseDy: bDy,
+                        dx: bDx, // Current offset
+                        dy: bDy,
+                        vx: 0,
+                        vy: 0,
+                        char: config.flowerGlyphs.charAt(Math.floor(Math.random() * config.flowerGlyphs.length))
+                    });
+                }
+            }
+
+            update(canvasWidth, mouseX, mouseY, cameraY) {
+                this.x += this.speed;
+                if (this.x > canvasWidth + 150) {
+                    this.x = -150; // Wrap
+                    // Reset particles on wrap so new clouds form
+                    this.particles.forEach(p => {
+                        p.dx = p.baseDx;
+                        p.dy = p.baseDy;
+                        p.vx = 0;
+                        p.vy = 0;
+                    });
+                }
+
+                const screenY = this.y - cameraY;
+
+                this.particles.forEach(p => {
+                    // Calculate absolute particle screen position
+                    const pScreenX = this.x + p.dx;
+                    const pScreenY = screenY + p.dy;
+                    const dx = pScreenX - mouseX;
+                    const dy = pScreenY - mouseY;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+
+                    // Disperse if mouse is near
+                    if (dist < 100) {
+                        const force = (100 - dist) / 100;
+                        const angle = Math.atan2(dy, dx);
+                        const push = force * 5.0; // Stronger push
+                        // Scatter randomly
+                        const scatterAngle = angle + (Math.random() - 0.5); 
+                        p.vx += Math.cos(scatterAngle) * push;
+                        p.vy += Math.sin(scatterAngle) * push;
+                    }
+
+                    // Physics update
+                    p.dx += p.vx;
+                    p.dy += p.vy;
+                    p.vx *= 0.96; // Less friction for better drift
+                    p.vy *= 0.96;
+
+                    // REMOVED MEMORY FORCE:
+                    // They no longer return to shape, they just drift apart
+                });
+            }
+
+            draw(ctx, cameraY) {
+                const drawY = this.y - cameraY;
+                if (drawY > ctx.canvas.height + 100 || drawY < -100) return;
+
+                ctx.fillStyle = '#999999'; // Gray
+                ctx.font = "16px Courier New";
+                
+                this.particles.forEach(p => {
+                    ctx.fillText(p.char, this.x + p.dx, drawY + p.dy);
+                });
+            }
+        }
+
+
+        // --- MAIN CLASSES ---
+
+        class Card {
+            constructor(x, y, w, h, text) {
+                this.x = x; 
+                this.y = y;
+                this.w = w;
+                this.h = h;
+                this.text = text;
+            }
+
+            draw(ctx, cameraY, carouselOffsetX) {
+                const drawX = this.x + carouselOffsetX;
+                const drawY = this.y - cameraY;
+                
+                if (drawY > ctx.canvas.height || drawY + this.h < 0) return;
+                if (drawX > ctx.canvas.width || drawX + this.w < 0) return;
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                ctx.fillRect(drawX, drawY, this.w, this.h);
+
+                ctx.strokeStyle = config.colors.cardBorder;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(drawX, drawY, this.w, this.h);
+
+                ctx.fillStyle = config.colors.cardText;
+                ctx.font = "700 24px Courier New";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                
+                const lines = this.text.split('\n');
+                const lineHeight = 30;
+                const totalHeight = lines.length * lineHeight;
+                
+                lines.forEach((line, i) => {
+                    ctx.fillText(line, drawX + this.w / 2, drawY + this.h / 2 - totalHeight/2 + i*lineHeight + lineHeight/2);
+                });
+                
+                return { x: drawX, y: drawY, w: this.w, h: this.h };
+            }
+        }
+
+        class TextPixel {
+            constructor(x, y, isStructure, isFixed) {
+                this.originalX = x;
+                this.originalY = y;
+                this.x = x;
+                this.y = y;
+                
+                this.vx = 0;
+                this.vy = 0;
+                this.isFalling = false;
+                this.isResting = false;
+                
+                this.isStructure = isStructure; 
+                this.isFixed = isFixed; 
+                
+                this.offsetY = 0; 
+                
+                if (this.isFixed) {
+                    this.char = config.headerChars.charAt(Math.floor(Math.random() * config.headerChars.length));
+                } else {
+                    this.char = config.flowerGlyphs.charAt(Math.floor(Math.random() * config.flowerGlyphs.length));
+                }
+            }
+
+            activatePhysics() {
+                if (!this.isFixed && !this.isFalling) {
+                    this.isFalling = true;
+                    this.vx = (Math.random() - 0.2) * config.scatter + config.slideForce; 
+                    this.vy = (Math.random() * -2) - 1; 
+                }
+            }
+
+            update(mouseX, mouseY, cameraY, floorHeights, binSize, canvasWidth, activeCards) {
+                const worldMouseY = mouseY + cameraY;
+
+                // --- 1. FALLING PHYSICS ---
+                if (this.isFalling && !this.isResting) {
+                    this.vy += config.gravity;
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    
+                    this.vx *= 0.99; 
+
+                    if (this.x > canvasWidth - config.fontSize) {
+                        this.x = canvasWidth - config.fontSize;
+                        this.vx *= -0.5; 
+                    }
+                    if (this.x < 0) {
+                        this.x = 0;
+                        this.vx *= -0.5;
+                    }
+
+                    // --- PILE COLLISION ---
+                    let binIndex = Math.floor(this.x / binSize);
+                    if (binIndex < 0) binIndex = 0;
+                    if (binIndex >= floorHeights.length) binIndex = floorHeights.length - 1;
+
+                    let groundY = floorHeights[binIndex];
+
+                    // Check Card Collision 
+                    for (const cardBox of activeCards) {
+                        if (this.x > cardBox.x && this.x < cardBox.x + cardBox.w) {
+                            if (this.y < cardBox.y) {
+                                if (cardBox.y < groundY) {
+                                    groundY = cardBox.y;
+                                }
+                            }
+                        }
+                    }
+
+                    if (this.y >= groundY) {
+                        // Avalanche logic
+                        const leftY = floorHeights[binIndex - 1] ?? groundY;
+                        const rightY = floorHeights[binIndex + 1] ?? groundY;
+                        const dropRight = rightY - groundY; 
+                        const dropLeft = leftY - groundY;
+                        const ROLL_THRESHOLD = 5;
+
+                        if (dropRight > ROLL_THRESHOLD) {
+                            this.x += binSize;
+                            this.vx += 0.5; 
+                        } else if (dropLeft > ROLL_THRESHOLD) {
+                            this.x -= binSize;
+                            this.vx -= 0.5;
+                        } else {
+                            this.y = groundY;
+                            this.isResting = true;
+                            this.vx = 0;
+                            this.vy = 0;
+                            // Grow pile slightly
+                            floorHeights[binIndex] -= (config.fontSize * 0.25); 
+                        }
+                    }
+                    
+                    if (Math.random() < 0.05 && !this.isFixed) {
+                         this.char = config.flowerGlyphs.charAt(Math.floor(Math.random() * config.flowerGlyphs.length));
+                    }
+
+                    return;
+                }
+
+                // --- 2. INTERACTIVE PILE (Disturbing the peace) ---
+                if (this.isResting) {
+                    // Check if mouse is brushing through
+                    const dx = this.x - mouseX;
+                    // Use worldMouseY because this particle is resting in world space
+                    const dy = this.y - worldMouseY; 
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < config.squareSize) {
+                        // KICK IT!
+                        this.isResting = false;
+                        this.vy = (Math.random() * -5) - 2; // Pop up
+                        this.vx = (Math.random() - 0.5) * 5; // Scatter sideways
+                    }
+                }
+
+                // --- 3. HOVER UPDATE (Fixed Header) ---
+                if (!this.isFalling && !this.isResting) {
+                    const dx = this.x - mouseX;
+                    const dy = this.y - worldMouseY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < config.squareSize) {
+                        const angle = Math.atan2(dy, dx);
+                        const force = (config.squareSize - dist) / config.squareSize;
+                        
+                        this.x += Math.cos(angle) * force * 2;
+                        this.y += Math.sin(angle) * force * 2;
+                        
+                        this.vx = (this.originalX - this.x) * 0.1;
+                        this.vy = (this.originalY - this.y) * 0.1;
+                    } else {
+                        this.x += (this.originalX - this.x) * 0.1;
+                        this.y += (this.originalY - this.y) * 0.1;
+                    }
+                    
+                    if (Math.random() < 0.01) {
+                         this.offsetY = Math.sin(Date.now() * 0.005) * 2;
+                    }
+                }
+            }
+
+            draw(ctx, cameraY) {
+                const drawY = this.y - cameraY + (this.isFalling ? 0 : this.offsetY);
+
+                if (drawY < -50 || drawY > ctx.canvas.height + 50) return;
+
+                if (this.isFixed) {
+                    // HEADER (Dynamic Color)
+                    ctx.fillStyle = config.colors.header;
+                    ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`; 
+                } else if (this.isStructure) {
+                    ctx.fillStyle = config.colors.structure;
+                    ctx.font = `${config.fontSize}px ${config.fontFamily}`;
+                } else {
+                    ctx.fillStyle = config.colors.backgroundFlower;
+                    ctx.font = `${config.fontSize}px ${config.fontFamily}`;
+                }
+                
+                ctx.fillText(this.char, this.x, drawY);
+            }
+        }
+
+        class AsciiRenderer {
+            constructor() {
+                this.canvas = document.getElementById('asciiCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.pixels = [];
+                this.cards = [];
+                
+                // Scene 2 Environment
+                this.sun = null;
+                this.birds = [];
+                this.clouds = [];
+
+                this.audio = new Audio('/kids-on-the-beach.mp3');
+                this.audio.loop = true;
+                this.isSoundOn = false;
+                this.soundButtonRect = {x: 0, y: 0, w: 0, h: 0};
+                
+                this.floorHeights = [];
+                this.binSize = 10; 
+                
+                this.mouseX = -1000;
+                this.mouseY = -1000;
+                this.cameraY = 0;
+                this.targetCameraY = 0;
+                this.pageHeight = 0; 
+
+                // Carousel State
+                this.carouselOffsetX = 0;
+                this.targetCarouselOffsetX = 0;
+                this.cardWidth = 300;
+                this.cardGap = 50;
+                this.totalCarouselWidth = 0;
+                
+                this.animate = this.animate.bind(this);
+                this.resize = this.resize.bind(this);
+                this.handleMouseMove = this.handleMouseMove.bind(this);
+                this.handleScroll = this.handleScroll.bind(this);
+                this.handleClick = this.handleClick.bind(this);
+
+                window.addEventListener('resize', this.resize);
+                window.addEventListener('mousemove', this.handleMouseMove);
+                window.addEventListener('touchmove', (e) => {
+                    this.handleMouseMove(e.touches[0]);
+                });
+                window.addEventListener('wheel', this.handleScroll, { passive: false });
+                this.canvas.addEventListener('click', this.handleClick);
+
+                this.resize();
+                requestAnimationFrame(this.animate);
+            }
+
+            handleScroll(e) {
+                e.preventDefault();
+                this.targetCameraY += e.deltaY;
+                this.targetCameraY = Math.max(0, Math.min(this.targetCameraY, this.pageHeight));
+                this.checkSpillTrigger();
+            }
+
+            handleClick(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                // 1. Check Carrot Click
+                const cx = this.canvas.width - 50;
+                const cy = this.canvas.height - 50;
+                if (Math.sqrt((clickX - cx)**2 + (clickY - cy)**2) < 40) {
+                    if (this.targetCameraY < 100) this.targetCameraY = this.pageHeight;
+                    else this.targetCameraY = 0;
+                    this.checkSpillTrigger();
+                    return;
+                }
+
+                // 2. Check Sound Button
+                if (this.sun && this.sun.active) {
+                    if (clickX > this.soundButtonRect.x && clickX < this.soundButtonRect.x + this.soundButtonRect.w &&
+                        clickY > this.soundButtonRect.y && clickY < this.soundButtonRect.y + this.soundButtonRect.h) {
+                        
+                        this.isSoundOn = !this.isSoundOn;
+                        if (this.isSoundOn) {
+                            this.audio.play().catch(e => console.error("Audio play failed:", e));
+                        } else {
+                            this.audio.pause();
+                        }
+                        return; // Consume the click
+                    }
+                }
+
+                // 3. Check Carousel Arrows (Only if scrolled down)
+                if (this.cameraY > this.pageHeight * 0.5) {
+                    const arrowY = this.pageHeight + (this.pageHeight / 2); // Center of 2nd page
+                    const relativeClickY = clickY + this.cameraY;
+
+                    // Left Arrow Area
+                    if (clickX < 100 && Math.abs(relativeClickY - arrowY) < 100) {
+                        this.targetCarouselOffsetX += (this.cardWidth + this.cardGap);
+                        this.targetCarouselOffsetX = Math.min(this.canvas.width/2 - this.cardWidth/2, this.targetCarouselOffsetX);
+                    }
+                    
+                    // Right Arrow Area
+                    if (clickX > this.canvas.width - 100 && Math.abs(relativeClickY - arrowY) < 100) {
+                        this.targetCarouselOffsetX -= (this.cardWidth + this.cardGap);
+                        const minOffset = -this.totalCarouselWidth + (this.canvas.width/2 + this.cardWidth/2);
+                        this.targetCarouselOffsetX = Math.max(minOffset, this.targetCarouselOffsetX);
+                    }
+                }
+            }
+
+            checkSpillTrigger() {
+                if (this.targetCameraY > 100) {
+                    this.pixels.forEach(p => p.activatePhysics());
+                }
+            }
+
+            handleMouseMove(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                this.mouseX = e.clientX - rect.left;
+                this.mouseY = e.clientY - rect.top;
+            }
+
+            resize() {
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                if (!width || width === 0) return;
+
+                this.canvas.width = width;
+                this.canvas.height = height;
+                this.pageHeight = height; 
+                
+                const floorLevel = this.pageHeight * 2 - 50;
+                const numBins = Math.ceil(this.canvas.width / this.binSize);
+                this.floorHeights = new Array(numBins).fill(floorLevel);
+                
+                this.initPixels();
+                this.initCards();
+                this.initEnvironment();
+            }
+
+            initEnvironment() {
+                // Sun (Top right of 2nd page)
+                this.sun = new Sun(this.canvas.width - 100, this.pageHeight + 100);
+
+                // Birds
+                this.birds = [];
+                for(let i=0; i<4; i++) {
+                    this.birds.push(new Bird(Math.random() * this.canvas.width, this.pageHeight + 100 + Math.random() * 200));
+                }
+
+                // Clouds
+                this.clouds = [];
+                for(let i=0; i<5; i++) {
+                    this.clouds.push(new Cloud(Math.random() * this.canvas.width, this.pageHeight + 50 + Math.random() * 200));
+                }
+            }
+
+            initCards() {
+                this.cards = [];
+                const numCards = config.experiments.length;
+                const cardH = 400;
+                
+                this.totalCarouselWidth = (numCards * this.cardWidth) + ((numCards - 1) * this.cardGap);
+                
+                // Start centered
+                this.targetCarouselOffsetX = (this.canvas.width - this.totalCarouselWidth) / 2;
+                
+                const startY = this.canvas.height + (this.canvas.height - cardH) / 2;
+
+                for (let i = 0; i < numCards; i++) {
+                    const x = i * (this.cardWidth + this.cardGap);
+                    this.cards.push(new Card(x, startY, this.cardWidth, cardH, config.experiments[i]));
+                }
+                
+                this.carouselOffsetX = (this.canvas.width - this.totalCarouselWidth) / 2;
+                this.targetCarouselOffsetX = this.carouselOffsetX;
+            }
+
+            initPixels() {
+                if (this.canvas.width === 0 || this.canvas.height === 0) return;
+
+                this.pixels = [];
+                const cols = Math.ceil(this.canvas.width / config.fontSize);
+                const rows = Math.ceil(this.canvas.height / config.fontSize); 
+
+                const maskCanvas = document.createElement('canvas');
+                maskCanvas.width = Math.max(1, this.canvas.width);
+                maskCanvas.height = Math.max(1, this.canvas.height);
+                
+                const maskCtx = maskCanvas.getContext('2d');
+
+                maskCtx.fillStyle = '#000000';
+                maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height); 
+                maskCtx.fillStyle = '#FFFFFF';
+                maskCtx.textAlign = 'center';
+                maskCtx.textBaseline = 'middle';
+                
+                const centerX = maskCanvas.width / 2;
+                const centerY = maskCanvas.height / 2;
+                
+                // 1. MAIN TEXT - Reduce scale denominator to allow for subtitle
+                const scaleMain = Math.min(this.canvas.width / 6, this.canvas.height / 4.5);
+                maskCtx.font = `900 ${scaleMain}px Arial`; 
+                const lines = config.textMain.split('\n');
+                const lineHeightMain = scaleMain * 0.85; 
+                const totalHeightMain = lines.length * lineHeightMain;
+                
+                // Keep the same visual "lift"
+                const mainTextYStart = centerY - (totalHeightMain / 2) - (this.canvas.height * 0.15);
+
+                lines.forEach((line, i) => {
+                    const y = mainTextYStart + (i * lineHeightMain) + (lineHeightMain / 2.5);
+                    maskCtx.fillText(line, centerX, y);
+                });
+                
+                // 2. SUBTITLE (Much Larger now)
+                const subScale = scaleMain * 0.75; // 75% of main text
+                maskCtx.font = `900 ${subScale}px Arial`; 
+                const subY = mainTextYStart + totalHeightMain + (subScale * 1.0); // Tighter spacing
+                maskCtx.fillText(config.textSub, centerX, subY);
+
+                const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
+
+                for (let j = 0; j < rows; j++) {
+                    for (let i = 0; i < cols; i++) {
+                        const x = i * config.fontSize;
+                        const y = j * config.fontSize;
+                        
+                        const pixelIndex = ((Math.floor(y + config.fontSize/2) * maskCanvas.width) + Math.floor(x + config.fontSize/2)) * 4;
+                        
+                        if (pixelIndex >= 0 && pixelIndex < imageData.length) {
+                            const isStructure = imageData[pixelIndex] > 128;
+                            const isFixed = isStructure; 
+                            this.pixels.push(new TextPixel(x, y, isStructure, isFixed));
+                        }
+                    }
+                }
+            }
+
+            drawUI() {
+                // Draw Carrot (Top/Bottom toggle)
+                if (this.cameraY <= 100) {
+                    const x = this.canvas.width - 50;
+                    const y = (this.canvas.height - 50) + Math.sin(Date.now() * 0.005) * 5;
+                    this.ctx.fillStyle = config.colors.header; 
+                    this.ctx.font = '900 40px Arial';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText("⌄", x, y);
+                } else if (this.cameraY >= this.pageHeight - 100) {
+                     // Draw Carousel Arrows (Thick Chevrons)
+                     const arrowY = this.pageHeight * 1.5 - this.cameraY;
+                     const padding = 30;
+
+                     this.ctx.strokeStyle = config.colors.arrowColor;
+                     this.ctx.lineWidth = 8; // Thick!
+                     this.ctx.lineCap = 'round';
+                     this.ctx.lineJoin = 'round';
+
+                     // Left Chevron
+                     this.ctx.beginPath();
+                     this.ctx.moveTo(padding + 40, arrowY - 30);
+                     this.ctx.lineTo(padding + 10, arrowY);
+                     this.ctx.lineTo(padding + 40, arrowY + 30);
+                     this.ctx.stroke();
+                     
+                     // Right Chevron
+                     this.ctx.beginPath();
+                     this.ctx.moveTo(this.canvas.width - padding - 40, arrowY - 30);
+                     this.ctx.lineTo(this.canvas.width - padding - 10, arrowY);
+                     this.ctx.lineTo(this.canvas.width - padding - 40, arrowY + 30);
+                     this.ctx.stroke();
+                }
+
+                if (this.sun && this.sun.active) { // Tying to sun's appearance
+                    const buttonW = 140;
+                    const buttonH = 30; // Less tall
+                    const buttonX = this.canvas.width - buttonW - 20; // 20px padding from right
+                    const buttonY = this.canvas.height - buttonH - 20; // 20px padding from bottom
+                    
+                    this.soundButtonRect = {x: buttonX, y: buttonY, w: buttonW, h: buttonH}; // Update for click detection
+
+                    const text = this.isSoundOn ? "Sound Off" : "Sound On";
+                    
+                    // Button BG
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    this.ctx.fillRect(buttonX, buttonY, buttonW, buttonH);
+                    this.ctx.strokeStyle = config.colors.cardBorder;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(buttonX, buttonY, buttonW, buttonH);
+
+                    // Set font for text measurement
+                    this.ctx.font = "700 16px Courier New";
+                    
+                    // Text
+                    const textStartX = buttonX + 10; // Padding from left
+                    const textY = buttonY + buttonH/2; // Centered vertically
+                    this.ctx.fillStyle = config.colors.cardText;
+                    this.ctx.textAlign = "left";
+                    this.ctx.textBaseline = "middle";
+                    this.ctx.fillText(text, textStartX, textY);
+
+                    // Icon (moved to the right of the text)
+                    const textMetrics = this.ctx.measureText(text);
+                    const textWidth = textMetrics.width;
+                    const iconX = textStartX + textWidth + 10; // Text start + text width + 10px gap
+                    const iconY = buttonY + buttonH / 2; // Centered vertically
+                    this.ctx.strokeStyle = config.colors.cardText;
+                    this.ctx.lineWidth = 2;
+                    
+                    // Speaker body
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(iconX, iconY - 5);
+                    this.ctx.lineTo(iconX + 4, iconY - 5);
+                    this.ctx.lineTo(iconX + 8, iconY - 10);
+                    this.ctx.lineTo(iconX + 8, iconY + 10);
+                    this.ctx.lineTo(iconX + 4, iconY + 5);
+                    this.ctx.lineTo(iconX, iconY + 5);
+                    this.ctx.closePath();
+                    this.ctx.stroke();
+
+                    if(this.isSoundOn) {
+                         this.ctx.beginPath();
+                         this.ctx.moveTo(iconX + 12, iconY-2);
+                         this.ctx.arc(iconX + 12, iconY, 5, -Math.PI/4, Math.PI/4);
+                         this.ctx.stroke();
+                         this.ctx.beginPath();
+                         this.ctx.moveTo(iconX + 12, iconY);
+                         this.ctx.arc(iconX + 12, iconY, 8, -Math.PI/4, Math.PI/4);
+                         this.ctx.stroke();
+                    }
+                }
+            }
+
+            animate() {
+                if (this.canvas.width === 0) return;
+
+                // Smooth Camera
+                this.cameraY += (this.targetCameraY - this.cameraY) * 0.1;
+                // Smooth Carousel
+                this.carouselOffsetX += (this.targetCarouselOffsetX - this.carouselOffsetX) * 0.1;
+
+                this.ctx.fillStyle = config.colors.bg;
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.textBaseline = 'top';
+
+                // --- 1. BACKGROUND LAYERS ---
+                if (this.sun) {
+                    this.sun.update(this.cameraY, this.pageHeight, this.mouseX, this.mouseY);
+                    this.sun.draw(this.ctx, this.cameraY);
+                }
+
+                // --- 2. CARDS ---
+                const activeCards = [];
+                this.cards.forEach(card => {
+                    const box = card.draw(this.ctx, this.cameraY, this.carouselOffsetX);
+                    if (box) activeCards.push(box);
+                });
+
+                // --- 3. FOREGROUND ATMOSPHERE (Over Carousel) ---
+                this.clouds.forEach(c => {
+                    c.update(this.canvas.width, this.mouseX, this.mouseY, this.cameraY);
+                    c.draw(this.ctx, this.cameraY);
+                });
+                this.birds.forEach(b => {
+                    b.update(this.canvas.width, this.mouseX, this.mouseY, this.cameraY);
+                    b.draw(this.ctx, this.cameraY);
+                });
+
+                // --- 4. PIXELS (Debris / Piles) ---
+                for (const pixel of this.pixels) {
+                    pixel.update(this.mouseX, this.mouseY, this.cameraY, this.floorHeights, this.binSize, this.canvas.width, activeCards);
+                    pixel.draw(this.ctx, this.cameraY);
+                }
+
+                this.drawUI();
+
+                requestAnimationFrame(this.animate);
+            }
+        }
+
+        window.onload = () => {
+            new AsciiRenderer();
+        };
+
+    </script>
+</body>
+</html>
