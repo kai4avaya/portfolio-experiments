@@ -664,8 +664,11 @@
                 this.stars = [];
                 this.waterParticles = [];
 
-                this.audio = new Audio('kids-on-the-beach.mp3');
-                this.audio.loop = true;
+                this.audioBeach = null;
+                this.audioHouse = null;
+                
+                this.currentAudio = null; // 'beach', 'house', or null
+                
                 this.isSoundOn = false;
                 this.isHoveringSoundButton = false;
                 this.soundButtonRect = {x: 0, y: 0, w: 0, h: 0};
@@ -722,14 +725,16 @@
                 const clickX = e.clientX - rect.left;
                 const clickY = e.clientY - rect.top;
 
-                // 1. Check Carrot Click
-                const cx = this.canvas.width - 50;
-                const cy = this.canvas.height - 50;
-                if (Math.sqrt((clickX - cx)**2 + (clickY - cy)**2) < 40) {
-                    if (this.targetCameraY < 100) this.targetCameraY = this.pageHeight;
-                    else this.targetCameraY = 0;
-                    this.checkSpillTrigger();
-                    return;
+                // 1. Check Carrot Click (Only if visible at top)
+                if (this.cameraY <= 100) {
+                    const cx = this.canvas.width - 50;
+                    const cy = this.canvas.height - 50;
+                    if (Math.sqrt((clickX - cx)**2 + (clickY - cy)**2) < 40) {
+                        if (this.targetCameraY < 100) this.targetCameraY = this.pageHeight;
+                        else this.targetCameraY = 0;
+                        this.checkSpillTrigger();
+                        return;
+                    }
                 }
 
                 // 2. Check Sound Button
@@ -738,10 +743,31 @@
                         clickY > this.soundButtonRect.y && clickY < this.soundButtonRect.y + this.soundButtonRect.h) {
                         
                         this.isSoundOn = !this.isSoundOn;
-                        if (this.isSoundOn) {
-                            this.audio.play().catch(e => console.error("Audio play failed:", e));
+                        
+                        if (!this.isSoundOn) {
+                            if (this.audioBeach) this.audioBeach.pause();
+                            if (this.audioHouse) this.audioHouse.pause();
+                            this.currentAudio = null;
                         } else {
-                            this.audio.pause();
+                            // Lazy Load Audio on first click
+                            if (!this.audioBeach) {
+                                this.audioBeach = new Audio('kids-on-the-beach.mp3');
+                                this.audioBeach.loop = true;
+                                this.audioHouse = new Audio('house.mp3');
+                                this.audioHouse.loop = true;
+                            }
+
+                            // Check Sun Hover for initial track
+                            let startTrack = 'beach';
+                            const dx = this.mouseX - this.sun.x;
+                            const dy = this.mouseY - (this.sun.y - this.cameraY);
+                            if (Math.sqrt(dx*dx + dy*dy) < 100) {
+                                startTrack = 'house';
+                            }
+                            
+                            if (startTrack === 'beach') this.audioBeach.play().catch(e => console.error(e));
+                            else this.audioHouse.play().catch(e => console.error(e));
+                            this.currentAudio = startTrack;
                         }
                         return; // Consume the click
                     }
@@ -1088,6 +1114,25 @@
                 // Smooth Carousel
                 this.carouselOffsetX += (this.targetCarouselOffsetX - this.carouselOffsetX) * 0.1;
                 
+                // --- AUDIO SWITCHING ---
+                if (this.isSoundOn && this.sun && this.sun.active) {
+                    const dx = this.mouseX - this.sun.x;
+                    const dy = this.mouseY - (this.sun.y - this.cameraY);
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    const targetAudio = (dist < 100) ? 'house' : 'beach';
+                    
+                    if (targetAudio !== this.currentAudio) {
+                        if (this.currentAudio === 'beach') this.audioBeach.pause();
+                        if (this.currentAudio === 'house') this.audioHouse.pause();
+                        
+                        if (targetAudio === 'beach') this.audioBeach.play().catch(e => {});
+                        if (targetAudio === 'house') this.audioHouse.play().catch(e => {});
+                        
+                        this.currentAudio = targetAudio;
+                    }
+                }
+
                 // --- HOVER DETECTION & CURSOR ---
                 let isHoveringClickable = false;
                 this.isHoveringSoundButton = false;
