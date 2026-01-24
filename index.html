@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/fruit.ico" type="image/x-icon">
+    <link rel="icon" href="fruit.ico" type="image/x-icon">
 
     <title>Kai Kleinbard - Floral Architecture</title>
     <style>
@@ -43,6 +43,8 @@
         <canvas id="asciiCanvas"></canvas>
     </div>
 
+    <script src="darkmode.js"></script>
+
     <script>
         /**
          * Helper: Generate a random vibrant color excluding Blue
@@ -68,13 +70,18 @@
             fontFamily: "'Courier New', Courier, monospace",
             colors: {
                 bg: '#f4f7f9',
+                bgDark: '#444444', // Lighter Gray
                 
                 // DYNAMIC COLOR ON LOAD
                 header: getRandomHeaderColor(), 
-                
+                headerDark: '#FFD700', // Gold/Yellow for dark mode contrast
+
                 // FALLING PARTICLES (Light Sky Blue)
                 structure: '#87CEEB', 
+                structureDark: '#00FFFF', // Cyan for dark mode
+
                 backgroundFlower: 'rgba(135, 206, 235, 0.5)',
+                backgroundFlowerDark: 'rgba(0, 255, 255, 0.4)',
                 
                 cardBorder: '#8899aa',
                 cardText: '#445566',
@@ -103,6 +110,64 @@
         };
 
         // --- SCENE 2 ELEMENTS (Sun, Birds, Clouds) ---
+
+        class WaterParticle {
+            constructor(x, y, freq, amp, phaseShift) {
+                this.x = x;
+                this.baseY = y;
+                this.y = y;
+                
+                this.freq = freq; 
+                this.amp = amp;   
+                this.phase = (x * 0.02) + phaseShift; 
+                
+                this.char = "<";
+                this.size = 20 + Math.random() * 10;
+                
+                // Ripple Physics (Damped Spring)
+                this.rippleOffset = 0;
+                this.rippleVelocity = 0;
+            }
+
+            update(mouseX, mouseY, cameraY) {
+                // 1. Base Wave (Slower time factor)
+                const time = Date.now();
+                const waveY = Math.sin(time * (this.freq * 0.5) + this.phase) * this.amp; 
+                
+                // 2. Interaction (Spring Physics)
+                const screenY = this.baseY - cameraY; 
+                const dx = this.x - mouseX;
+                const dy = (screenY + waveY) - mouseY; // Approximate hit
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                // Mouse Push Force
+                if (dist < 60) {
+                    const force = (60 - dist) / 60;
+                    this.rippleVelocity += force * 1.5; // Gentle push
+                }
+                
+                // Spring force to return to 0
+                const k = 0.02; // Stiffness
+                const damping = 0.95;
+                const springForce = -this.rippleOffset * k;
+                
+                this.rippleVelocity += springForce;
+                this.rippleVelocity *= damping;
+                this.rippleOffset += this.rippleVelocity;
+
+                this.y = this.baseY + waveY + this.rippleOffset;
+            }
+
+            draw(ctx, cameraY, isDarkMode) {
+                const drawY = this.y - cameraY;
+                if (drawY > ctx.canvas.height + 50 || drawY < -50) return;
+
+                // Faint/Faded Colors (0.3 Opacity)
+                ctx.fillStyle = isDarkMode ? 'rgba(0, 255, 255, 0.3)' : 'rgba(0, 119, 190, 0.3)'; 
+                ctx.font = `bold ${this.size}px Arial`;
+                ctx.fillText(this.char, this.x, drawY);
+            }
+        }
 
         class Sun {
             constructor(x, y) {
@@ -181,14 +246,14 @@
                 }
             }
 
-            draw(ctx, cameraY) {
+            draw(ctx, cameraY, isDarkMode) {
                 if (this.scale < 0.01) return;
                 
                 const drawY = this.y - cameraY;
 
                 ctx.save();
                 ctx.translate(this.x, drawY);
-                ctx.fillStyle = '#FFD700'; // Gold
+                ctx.fillStyle = isDarkMode ? '#F4F6F0' : '#FFD700'; // Moon vs Sun
 
                 ctx.beginPath();
                 
@@ -564,20 +629,20 @@
                 }
             }
 
-            draw(ctx, cameraY) {
+            draw(ctx, cameraY, isDarkMode) {
                 const drawY = this.y - cameraY + (this.isFalling ? 0 : this.offsetY);
 
                 if (drawY < -50 || drawY > ctx.canvas.height + 50) return;
 
                 if (this.isFixed) {
                     // HEADER (Dynamic Color)
-                    ctx.fillStyle = config.colors.header;
+                    ctx.fillStyle = isDarkMode ? config.colors.headerDark : config.colors.header;
                     ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`; 
                 } else if (this.isStructure) {
-                    ctx.fillStyle = config.colors.structure;
+                    ctx.fillStyle = isDarkMode ? config.colors.structureDark : config.colors.structure;
                     ctx.font = `${config.fontSize}px ${config.fontFamily}`;
                 } else {
-                    ctx.fillStyle = config.colors.backgroundFlower;
+                    ctx.fillStyle = isDarkMode ? config.colors.backgroundFlowerDark : config.colors.backgroundFlower;
                     ctx.font = `${config.fontSize}px ${config.fontFamily}`;
                 }
                 
@@ -596,11 +661,20 @@
                 this.sun = null;
                 this.birds = [];
                 this.clouds = [];
+                this.stars = [];
+                this.waterParticles = [];
 
-                this.audio = new Audio('/kids-on-the-beach.mp3');
+                this.audio = new Audio('kids-on-the-beach.mp3');
                 this.audio.loop = true;
                 this.isSoundOn = false;
+                this.isHoveringSoundButton = false;
                 this.soundButtonRect = {x: 0, y: 0, w: 0, h: 0};
+                
+                // Dark Mode State
+                const hours = new Date().getHours();
+                this.isDarkMode = (hours < 6 || hours >= 18);
+                this.darkModeToggleRect = {x: 0, y: 0, w: 0, h: 0};
+                this.isHoveringDarkModeToggle = false;
                 
                 this.floorHeights = [];
                 this.binSize = 10; 
@@ -671,6 +745,13 @@
                         }
                         return; // Consume the click
                     }
+
+                    // Dark Mode Toggle
+                    if (clickX > this.darkModeToggleRect.x && clickX < this.darkModeToggleRect.x + this.darkModeToggleRect.w &&
+                        clickY > this.darkModeToggleRect.y && clickY < this.darkModeToggleRect.y + this.darkModeToggleRect.h) {
+                        this.isDarkMode = !this.isDarkMode;
+                        return;
+                    }
                 }
 
                 // 3. Check Carousel Arrows (Only if scrolled down)
@@ -737,6 +818,34 @@
                 this.clouds = [];
                 for(let i=0; i<5; i++) {
                     this.clouds.push(new Cloud(Math.random() * this.canvas.width, this.pageHeight + 50 + Math.random() * 200));
+                }
+
+                // Stars
+                this.stars = [];
+                for(let i=0; i<30; i++) {
+                    this.stars.push(new Star(Math.random() * this.canvas.width, this.pageHeight + Math.random() * this.pageHeight));
+                }
+
+                // Water Stream (Strands)
+                this.waterParticles = [];
+                const streamStartY = this.pageHeight * 2 - 60;
+                const streamEndY = this.pageHeight * 2;
+                const strandStep = 8; // Vertical spacing between strands
+
+                for (let y = streamStartY; y < streamEndY; y += strandStep) {
+                    // Strand properties
+                    const freq = 0.0005 + Math.random() * 0.0005; // Much slower frequency
+                    const amp = 3 + Math.random() * 5;
+                    const phaseShift = Math.random() * Math.PI * 2;
+                    
+                    // Dense horizontal packing
+                    for (let x = -20; x < this.canvas.width + 20; x += 15) {
+                        // Jitter
+                        const px = x + (Math.random() - 0.5) * 10;
+                        const py = y + (Math.random() - 0.5) * 5;
+                        
+                        this.waterParticles.push(new WaterParticle(px, py, freq, amp, phaseShift));
+                    }
                 }
             }
 
@@ -868,7 +977,7 @@
                     const text = this.isSoundOn ? "Sound Off" : "Sound On";
                     
                     // Button BG
-                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    this.ctx.fillStyle = this.isHoveringSoundButton ? 'rgba(220, 220, 220, 0.9)' : 'rgba(255, 255, 255, 0.8)';
                     this.ctx.fillRect(buttonX, buttonY, buttonW, buttonH);
                     this.ctx.strokeStyle = config.colors.cardBorder;
                     this.ctx.lineWidth = 2;
@@ -914,6 +1023,60 @@
                          this.ctx.arc(iconX + 12, iconY, 8, -Math.PI/4, Math.PI/4);
                          this.ctx.stroke();
                     }
+
+                    // --- Dark Mode Toggle ---
+                    const toggleSize = 30; // Square, same height as sound button
+                    const toggleX = buttonX - toggleSize - 10; // Left of sound button with 10px gap
+                    const toggleY = buttonY; // Aligned with top of sound button
+                    
+                    this.darkModeToggleRect = {x: toggleX, y: toggleY, w: toggleSize, h: toggleSize};
+
+                    // Draw Toggle Background (Square, matching Sound button)
+                    this.ctx.fillStyle = this.isHoveringDarkModeToggle ? 'rgba(220, 220, 220, 0.9)' : 'rgba(255, 255, 255, 0.8)';
+                    this.ctx.fillRect(toggleX, toggleY, toggleSize, toggleSize);
+                    
+                    this.ctx.strokeStyle = config.colors.cardBorder;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(toggleX, toggleY, toggleSize, toggleSize);
+
+                    const iconCx = toggleX + toggleSize/2;
+                    const iconCy = toggleY + toggleSize/2;
+
+                    this.ctx.strokeStyle = this.isDarkMode ? '#FFFFFF' : '#000000';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineJoin = 'round';
+
+                    if (this.isDarkMode) {
+                        // Moon Icon (Crescent Outline)
+                        this.ctx.beginPath();
+                        // Outer curve
+                        this.ctx.moveTo(iconCx + 3, iconCy - 6);
+                        this.ctx.bezierCurveTo(iconCx - 8, iconCy - 6, iconCx - 8, iconCy + 6, iconCx + 3, iconCy + 6);
+                        // Inner curve
+                        this.ctx.bezierCurveTo(iconCx - 3, iconCy + 2, iconCx - 3, iconCy - 2, iconCx + 3, iconCy - 6);
+                        this.ctx.stroke();
+                    } else {
+                        // Sun Icon (Outline)
+                        this.ctx.beginPath();
+                        this.ctx.arc(iconCx, iconCy, 4, 0, Math.PI*2);
+                        this.ctx.stroke();
+                        
+                        // Rays
+                        for(let i=0; i<8; i++){
+                            const angle = (Math.PI * 2 / 8) * i;
+                            const r1 = 7;
+                            const r2 = 9;
+                            const x1 = iconCx + Math.cos(angle) * r1;
+                            const y1 = iconCy + Math.sin(angle) * r1;
+                            const x2 = iconCx + Math.cos(angle) * r2;
+                            const y2 = iconCy + Math.sin(angle) * r2;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(x1, y1);
+                            this.ctx.lineTo(x2, y2);
+                            this.ctx.stroke();
+                        }
+                    }
                 }
             }
 
@@ -924,15 +1087,65 @@
                 this.cameraY += (this.targetCameraY - this.cameraY) * 0.1;
                 // Smooth Carousel
                 this.carouselOffsetX += (this.targetCarouselOffsetX - this.carouselOffsetX) * 0.1;
+                
+                // --- HOVER DETECTION & CURSOR ---
+                let isHoveringClickable = false;
+                this.isHoveringSoundButton = false;
+                this.isHoveringDarkModeToggle = false;
 
-                this.ctx.fillStyle = config.colors.bg;
+                // Check sound button hover
+                if (this.sun && this.sun.active) {
+                    const buttonW = 140;
+                    const buttonH = 30;
+                    const buttonX = this.canvas.width - buttonW - 20;
+                    const buttonY = this.canvas.height - buttonH - 20;
+                    
+                    if (this.mouseX > buttonX && this.mouseX < buttonX + buttonW &&
+                        this.mouseY > buttonY && this.mouseY < buttonY + buttonH) {
+                        isHoveringClickable = true;
+                        this.isHoveringSoundButton = true;
+                    }
+
+                    // Check Dark Mode Toggle Hover
+                    const toggleSize = 30;
+                    const toggleX = buttonX - toggleSize - 10;
+                    const toggleY = buttonY;
+                    
+                    if (this.mouseX > toggleX && this.mouseX < toggleX + toggleSize &&
+                        this.mouseY > toggleY && this.mouseY < toggleY + toggleSize) {
+                        isHoveringClickable = true;
+                        this.isHoveringDarkModeToggle = true;
+                    }
+                }
+
+                // Check carrot hover
+                if (this.cameraY <= 100) {
+                    const cx = this.canvas.width - 50;
+                    const cy = this.canvas.height - 50;
+                    if (Math.sqrt((this.mouseX - cx)**2 + (this.mouseY - cy)**2) < 40) {
+                        isHoveringClickable = true;
+                    }
+                }
+                
+                this.canvas.style.cursor = isHoveringClickable ? 'pointer' : 'default';
+
+                // BG COLOR
+                this.ctx.fillStyle = this.isDarkMode ? config.colors.bgDark : config.colors.bg;
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.textBaseline = 'top';
+
+                // --- 0. STARS (Dark Mode Only) ---
+                if (this.isDarkMode) {
+                    this.stars.forEach(star => {
+                        star.update();
+                        star.draw(this.ctx, this.cameraY);
+                    });
+                }
 
                 // --- 1. BACKGROUND LAYERS ---
                 if (this.sun) {
                     this.sun.update(this.cameraY, this.pageHeight, this.mouseX, this.mouseY);
-                    this.sun.draw(this.ctx, this.cameraY);
+                    this.sun.draw(this.ctx, this.cameraY, this.isDarkMode);
                 }
 
                 // --- 2. CARDS ---
@@ -952,7 +1165,13 @@
                     b.draw(this.ctx, this.cameraY);
                 });
 
-                // --- 4. PIXELS (Debris / Piles) ---
+                // --- 4. WATER STREAM (Behind Pile) ---
+                this.waterParticles.forEach(p => {
+                    p.update(this.mouseX, this.mouseY, this.cameraY);
+                    p.draw(this.ctx, this.cameraY, this.isDarkMode);
+                });
+
+                // --- 5. PIXELS (Debris / Piles) ---
                 for (const pixel of this.pixels) {
                     pixel.update(this.mouseX, this.mouseY, this.cameraY, this.floorHeights, this.binSize, this.canvas.width, activeCards);
                     pixel.draw(this.ctx, this.cameraY);
