@@ -1,0 +1,74 @@
+
+iframe
+https://kai4avaya.github.io/glass-blur-gradient/
+blur-gradient.mp4
+GRADIENTS This project explores textured gradients. A textured canvas is placed over a animating colorful gradient, amohorphic shape. using greensock to create visually appealing animations. Using Kai Kleinbard. Inspoired by the AWWWARDS gradient and mostly biuilt in conversation with Gemini.... 
+
+iframe
+endlessflame.mp4
+ENDLESS FLAME
+this project, built as an expeirment for TinyTorch, https://mlsysbook.ai/tinytorch/intro.html, this explores pixellated animations overlaid on a grid. Interactive elements using observers...
+
+iframe
+https://kai4avaya.github.io/water-flow/
+water-flow.mp4
+Water flow explores the endless flow of water. It uses soft html drawn div elements, animated birds and water flowing. It explores nature sounds creatign a calming and meditative effects. I'm interested in monochromatic colors, subtle paper like shades, hand drawn
+
+vid
+Ball Roll
+ball-roll.mp4
+hand drawn
+<name of japanese game where you gather a ton of things and become bigger an dbgigger" ,
+game , threejs, html css, drawing your imporint as you move
+generative art... Katmari ...
+https://kai4avaya.github.io/ball-roll/
+
+[vid]
+Tangle Draw
+tangle-draw.mp4
+Canvas, js audio, gnerative audio generative art.
+draw tangles in the canvas and then use audio to track them based on the shape of the drawing the audio react. Download your music and visual creations 
+https://kai4avaya.github.io/tangle-draw/
+
+[vid]
+TinyTorch 3d scroll
+tinytorch-code-scroll.mp4
+https://kai4avaya.github.io/tinytorch-frontend-flame-3js/
+threejs text exploding and scroll animations,... exploring the undulating nature of model training and ai .. this image is a reflection of consdering how tunytorch is about building with code from first principles, untangling the code and then recompiling it into somehting useful
+
+vid
+https://kai4avaya.github.io/factory/
+factory.mp4
+Factory is about watching the descrutctuing of a organizaed factory via scroll
+plays with time like the matrix
+explore assemnly and deassembly
+threejs, scroll animations, anima js
+audio interweaved with this
+
+iframe
+https://kai4avaya.github.io/cube/
+cube cube hi
+squareghost.mp4
+insoired by Ghosty's amazing ascii animation
+we stream in ascii into the div in a pattern to create this dancing 3d ascii effect... responds to mouse events
+
+
+iframe
+flower.mp4
+Flowers
+https://kai4avaya.github.io/flowers/
+allows one to plkay music with threejs unique shaoes
+each shaoe crafted
+the shaoes make a pleasant noise ... creating your own music
+generative music explorations
+
+vid
+tinytorch3dland.mp4
+TinyTorch timeline
+explore the history of AI through the undulating hills
+unudlating hills threejs landscape
+designed to represent the choppy nature of training an ai model
+TinyTorch is where you rebuild pytorch using first principels as a process of elarning
+as you traverse the history of ai day becomes night etc... 
+
+

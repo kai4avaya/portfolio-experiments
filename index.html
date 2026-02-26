@@ -70,7 +70,7 @@
             fontFamily: "'Courier New', Courier, monospace",
             colors: {
                 bg: '#f4f7f9',
-                bgDark: '#444444', // Lighter Gray
+                bgDark: '#0a0a0f', // Much darker
                 
                 // DYNAMIC COLOR ON LOAD
                 header: getRandomHeaderColor(), 
@@ -78,14 +78,17 @@
 
                 // FALLING PARTICLES (Light Sky Blue)
                 structure: '#87CEEB', 
-                structureDark: '#00FFFF', // Cyan for dark mode
+                structureDark: '#FFFFFF', // White for dark mode - stands out
 
                 backgroundFlower: 'rgba(135, 206, 235, 0.5)',
-                backgroundFlowerDark: 'rgba(0, 255, 255, 0.4)',
+                backgroundFlowerDark: 'rgba(255, 255, 255, 0.9)', // Bright white for dark mode
                 
                 cardBorder: '#8899aa',
                 cardText: '#445566',
-                arrowColor: '#334455' // Darker for visibility
+                cardBorderDark: '#888899',
+                cardTextDark: '#ffffff',
+                cardBgDark: 'rgba(15, 15, 25, 0.95)',
+                arrowColor: '#334455'
             },
             squareSize: 60,
             
@@ -100,13 +103,30 @@
             headerChars: "██▓▓▒▒░░ABCDEFGHIJKLMNOPQRSTUVWXYZ", 
             
             experiments: [
-                "NEURAL\nGARDENS",
-                "ASCII\nPHYSICS",
-                "DIGITAL\nBOTANY",
-                "REACTIVE\nTYPE",
-                "MEMORY\nGLITCH",
-                "PIXEL\nDUST"
-            ]
+                "BLUR\nGRADIENT",
+                "ENDLESS\nFLAME",
+                "WATER\nFLOW",
+                "BALL\nROLL",
+                "TANGLE\nDRAW",
+                "TINYTORCH\nSCROLL",
+                "FACTORY",
+                "SQUARE\nGHOST",
+                "FLOWERS",
+                "TINYTORCH\nLAND"
+            ],
+
+            videoMap: {
+                "BLUR\nGRADIENT": { video: "blur-gradient.mp4", url: "https://kai4avaya.github.io/glass-blur-gradient/", desc: "This project explores textured gradients. A textured canvas is placed over an animating colorful gradient, amorphous shape. Using greensock to create visually appealing animations." },
+                "ENDLESS\nFLAME": { video: "endlessflame.mp4", url: null, desc: "This project, built as an experiment for TinyTorch, explores pixellated animations overlaid on a grid. Interactive elements using observers." },
+                "WATER\nFLOW": { video: "water-flow.mp4", url: "https://kai4avaya.github.io/water-flow/", desc: "Water flow explores the endless flow of water. It uses soft HTML drawn div elements, animated birds and water flowing. Nature sounds creating a calming effect." },
+                "BALL\nROLL": { video: "ball-roll.mp4", url: "https://kai4avaya.github.io/ball-roll/", desc: "Hand drawn game where you gather items and become bigger. Katamari-inspired with threejs, HTML CSS, generative art." },
+                "TANGLE\nDRAW": { video: "tangle-draw.mp4", url: "https://kai4avaya.github.io/tangle-draw/", desc: "Canvas, JS audio, generative audio. Draw tangles and use audio to track them based on shape. Download your music and visual creations." },
+                "TINYTORCH\nSCROLL": { video: "tinytorch-code-scroll.mp4", url: "https://kai4avaya.github.io/tinytorch-frontend-flame-3js/", desc: "Threejs text exploding and scroll animations. Exploring the undulating nature of model training and AI." },
+                "FACTORY": { video: "factory.mp4", url: "https://kai4avaya.github.io/factory/", desc: "Factory is about watching the destructuring of an organized factory via scroll. Plays with time like the matrix." },
+                "SQUARE\nGHOST": { video: "squareghost.mp4", url: "https://kai4avaya.github.io/cube/", desc: "Inspired by Ghosty's amazing ASCII animation. Stream ASCII into a div in a pattern to create a dancing 3D effect." },
+                "FLOWERS": { video: "flower.mp4", url: "https://kai4avaya.github.io/flowers/", desc: "Allows one to play music with threejs unique shapes. Each shape crafted to make a pleasant noise. Generative music explorations." },
+                "TINYTORCH\nLAND": { video: "tinytorch3dland.mp4", url: null, desc: "Explore the history of AI through undulating hills. Threejs landscape representing the choppy nature of training an AI model." }
+            }
         };
 
         // --- SCENE 2 ELEMENTS (Sun, Birds, Clouds) ---
@@ -447,42 +467,185 @@
         // --- MAIN CLASSES ---
 
         class Card {
-            constructor(x, y, w, h, text) {
+            static maxPlaying = 2;
+            
+            constructor(x, y, w, text, index) {
                 this.x = x; 
                 this.y = y;
-                this.w = w;
-                this.h = h;
                 this.text = text;
+                this.index = index;
+                
+                this.video = null;
+                this.videoData = config.videoMap[text];
+                this.isHovering = false;
+                this.isPlaying = false;
+                this.wantsToPlay = false;
+                
+                const fontSize = 20;
+                const lineHeight = 26;
+                const textLines = text.split('\n').length;
+                const textHeight = textLines * lineHeight;
+                const videoAreaSize = w - 40;
+                const padding = 30 + 10 + 80 + 20;
+                this.h = videoAreaSize + padding + textHeight;
+                this.w = w;
+                
+                if (this.videoData) {
+                    this.video = document.createElement('video');
+                    this.video.src = 'assets/' + this.videoData.video;
+                    this.video.muted = true;
+                    this.video.loop = true;
+                    this.video.playsInline = true;
+                    this.video.preload = 'metadata';
+                }
             }
 
-            draw(ctx, cameraY, carouselOffsetX) {
+            draw(ctx, cameraY, carouselOffsetX, mouseX, mouseY, isDarkMode, visibleCount) {
                 const drawX = this.x + carouselOffsetX;
                 const drawY = this.y - cameraY;
                 
                 if (drawY > ctx.canvas.height || drawY + this.h < 0) return;
                 if (drawX > ctx.canvas.width || drawX + this.w < 0) return;
 
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                const bgColor = isDarkMode ? config.colors.cardBgDark : 'rgba(255, 255, 255, 0.95)';
+                const borderColor = isDarkMode ? config.colors.cardBorderDark : config.colors.cardBorder;
+                const textColor = isDarkMode ? config.colors.cardTextDark : config.colors.cardText;
+                
+                ctx.fillStyle = bgColor;
                 ctx.fillRect(drawX, drawY, this.w, this.h);
 
-                ctx.strokeStyle = config.colors.cardBorder;
+                ctx.strokeStyle = borderColor;
                 ctx.lineWidth = 2;
                 ctx.strokeRect(drawX, drawY, this.w, this.h);
 
-                ctx.fillStyle = config.colors.cardText;
-                ctx.font = "700 24px Courier New";
+                const videoAreaSize = this.w - 40;
+                const videoX = drawX + (this.w - videoAreaSize) / 2;
+                const videoY = drawY + 30;
+
+                this.isHovering = mouseX > videoX && mouseX < videoX + videoAreaSize &&
+                                  mouseY > videoY && mouseY < videoY + videoAreaSize;
+
+                this.wantsToPlay = this.isVisible || this.index < 2;
+
+                if (this.video && this.videoData) {
+                    if (this.wantsToPlay) {
+                        if (!this.isPlaying) {
+                            this.video.play().catch(() => {});
+                            this.isPlaying = true;
+                        }
+                    } else {
+                        if (this.isPlaying) {
+                            this.video.pause();
+                            this.video.currentTime = 0;
+                            this.isPlaying = false;
+                        }
+                    }
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(videoX, videoY, videoAreaSize, videoAreaSize);
+                    ctx.clip();
+                    
+                    if (this.video.readyState >= 2) {
+                        const vw = this.video.videoWidth;
+                        const vh = this.video.videoHeight;
+                        
+                        let srcX, srcY, srcW, srcH;
+                        
+                        const videoAspect = vw / vh;
+                        const boxAspect = videoAreaSize / videoAreaSize;
+                        
+                        if (videoAspect > boxAspect) {
+                            srcH = vh;
+                            srcW = vh * boxAspect;
+                            srcX = (vw - srcW) / 2;
+                            srcY = 0;
+                        } else {
+                            srcW = vw;
+                            srcH = vw / boxAspect;
+                            srcX = 0;
+                            srcY = (vh - srcH) / 2;
+                        }
+                        
+                        ctx.drawImage(this.video, srcX, srcY, srcW, srcH, videoX, videoY, videoAreaSize, videoAreaSize);
+                    }
+                    ctx.restore();
+
+                    ctx.strokeStyle = borderColor;
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(videoX, videoY, videoAreaSize, videoAreaSize);
+                }
+
+                ctx.fillStyle = textColor;
+                ctx.font = "700 20px Courier New";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 
                 const lines = this.text.split('\n');
-                const lineHeight = 30;
+                const lineHeight = 26;
                 const totalHeight = lines.length * lineHeight;
+                const textY = drawY + this.h - 30 - totalHeight / 2;
                 
                 lines.forEach((line, i) => {
-                    ctx.fillText(line, drawX + this.w / 2, drawY + this.h / 2 - totalHeight/2 + i*lineHeight + lineHeight/2);
+                    ctx.fillText(line, drawX + this.w / 2, textY + i * lineHeight);
                 });
                 
                 return { x: drawX, y: drawY, w: this.w, h: this.h };
+            }
+            
+            drawPopup(ctx, cameraY, carouselOffsetX, isDarkMode, mouseX, mouseY) {
+                if (!this.video || !this.videoData) return;
+                
+                const drawX = this.x + carouselOffsetX;
+                const drawY = this.y - cameraY;
+                
+                if (drawY > ctx.canvas.height || drawY + this.h < 0) return;
+                if (drawX > ctx.canvas.width || drawX + this.w < 0) return;
+                
+                const videoAreaSize = this.w - 40;
+                const videoX = drawX + (this.w - videoAreaSize) / 2;
+                const videoY = drawY + 30;
+                
+                const isHoveringVideo = mouseX > videoX && mouseX < videoX + videoAreaSize &&
+                                        mouseY > videoY && mouseY < videoY + videoAreaSize;
+                
+                if (!isHoveringVideo) return;
+                
+                const popupW = this.w - 20;
+                const popupH = 80;
+                const popupX = drawX + 10;
+                const popupY = videoY + videoAreaSize + 10;
+                
+                if (popupY + popupH < drawY + this.h - 10) {
+                    const popupBg = isDarkMode ? 'rgba(20, 20, 25, 0.95)' : 'rgba(0, 0, 0, 0.9)';
+                    const textColor = isDarkMode ? '#e0e0e0' : '#FFFFFF';
+                    
+                    ctx.fillStyle = popupBg;
+                    ctx.fillRect(popupX, popupY, popupW, popupH);
+                    
+                    ctx.fillStyle = textColor;
+                    ctx.font = "700 14px Courier New";
+                    ctx.textAlign = "left";
+                    ctx.textBaseline = "top";
+                    
+                    const maxWidth = popupW - 20;
+                    const words = this.videoData.desc.split(' ');
+                    let line = '';
+                    let lineY = popupY + 10;
+                    
+                    for (let n = 0; n < words.length; n++) {
+                        const testLine = line + words[n] + ' ';
+                        const metrics = ctx.measureText(testLine);
+                        if (metrics.width > maxWidth && n > 0) {
+                            ctx.fillText(line, popupX + 10, lineY);
+                            line = words[n] + ' ';
+                            lineY += 18;
+                        } else {
+                            line = testLine;
+                        }
+                    }
+                    ctx.fillText(line, popupX + 10, lineY);
+                }
             }
         }
 
@@ -789,6 +952,7 @@
                     if (clickX < 100 && Math.abs(relativeClickY - arrowY) < 100) {
                         this.targetCarouselOffsetX += (this.cardWidth + this.cardGap);
                         this.targetCarouselOffsetX = Math.min(this.canvas.width/2 - this.cardWidth/2, this.targetCarouselOffsetX);
+                        return;
                     }
                     
                     // Right Arrow Area
@@ -796,6 +960,25 @@
                         this.targetCarouselOffsetX -= (this.cardWidth + this.cardGap);
                         const minOffset = -this.totalCarouselWidth + (this.canvas.width/2 + this.cardWidth/2);
                         this.targetCarouselOffsetX = Math.max(minOffset, this.targetCarouselOffsetX);
+                        return;
+                    }
+                    
+                    // 4. Check Video Clicks
+                    for (const card of this.cards) {
+                        const drawX = card.x + this.carouselOffsetX;
+                        const drawY = card.y - this.cameraY;
+                        
+                        const videoAreaSize = card.w - 40;
+                        const videoX = drawX + (card.w - videoAreaSize) / 2;
+                        const videoY = drawY + 30;
+                        
+                        if (clickX > videoX && clickX < videoX + videoAreaSize &&
+                            clickY > videoY && clickY < videoY + videoAreaSize) {
+                            if (card.videoData && card.videoData.url) {
+                                window.open(card.videoData.url, '_blank');
+                            }
+                            return;
+                        }
                     }
                 }
             }
@@ -878,19 +1061,29 @@
             initCards() {
                 this.cards = [];
                 const numCards = config.experiments.length;
-                const cardH = 400;
                 
                 this.totalCarouselWidth = (numCards * this.cardWidth) + ((numCards - 1) * this.cardGap);
                 
-                // Start centered
+                // Start centered - will adjust after cards calculate their heights
                 this.targetCarouselOffsetX = (this.canvas.width - this.totalCarouselWidth) / 2;
                 
-                const startY = this.canvas.height + (this.canvas.height - cardH) / 2;
+                const startY = this.canvas.height + 50;
 
                 for (let i = 0; i < numCards; i++) {
                     const x = i * (this.cardWidth + this.cardGap);
-                    this.cards.push(new Card(x, startY, this.cardWidth, cardH, config.experiments[i]));
+                    this.cards.push(new Card(x, startY, this.cardWidth, config.experiments[i], i));
                 }
+                
+                // Center cards vertically based on their calculated heights
+                let maxHeight = 0;
+                this.cards.forEach(card => {
+                    if (card.h > maxHeight) maxHeight = card.h;
+                });
+                
+                const centeredStartY = this.canvas.height + (this.canvas.height - maxHeight) / 2;
+                this.cards.forEach(card => {
+                    card.y = centeredStartY;
+                });
                 
                 this.carouselOffsetX = (this.canvas.width - this.totalCarouselWidth) / 2;
                 this.targetCarouselOffsetX = this.carouselOffsetX;
@@ -1195,8 +1388,21 @@
 
                 // --- 2. CARDS ---
                 const activeCards = [];
+                
                 this.cards.forEach(card => {
-                    const box = card.draw(this.ctx, this.cameraY, this.carouselOffsetX);
+                    const drawX = card.x + this.carouselOffsetX;
+                    const drawY = card.y - this.cameraY;
+                    card.isVisible = drawY < this.canvas.height && drawY + card.h > 0 &&
+                                    drawX < this.canvas.width && drawX + card.w > 0;
+                });
+                
+                let visibleCount = 0;
+                this.cards.forEach(card => {
+                    if (card.isVisible) visibleCount++;
+                });
+                
+                this.cards.forEach(card => {
+                    const box = card.draw(this.ctx, this.cameraY, this.carouselOffsetX, this.mouseX, this.mouseY, this.isDarkMode, visibleCount);
                     if (box) activeCards.push(box);
                 });
 
@@ -1221,6 +1427,11 @@
                     pixel.update(this.mouseX, this.mouseY, this.cameraY, this.floorHeights, this.binSize, this.canvas.width, activeCards);
                     pixel.draw(this.ctx, this.cameraY);
                 }
+
+                // --- 6. CARD POPUPS (On top of everything) ---
+                this.cards.forEach(card => {
+                    card.drawPopup(this.ctx, this.cameraY, this.carouselOffsetX, this.isDarkMode, this.mouseX, this.mouseY);
+                });
 
                 this.drawUI();
 
